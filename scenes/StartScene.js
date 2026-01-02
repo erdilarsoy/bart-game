@@ -1,5 +1,6 @@
 import Phaser from 'https://esm.sh/phaser@3.70.0';
 import * as Tone from 'https://esm.sh/tone@14.7.77';
+import * as Tone from 'https://esm.sh/tone@14.7.77';
 
 export class StartScene extends Phaser.Scene {
     constructor() {
