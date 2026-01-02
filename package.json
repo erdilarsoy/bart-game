@@ -1,0 +1,13 @@
+{
+    "name": "bart-game",
+    "version": "1.0.0",
+    "description": "Balloon Analogue Risk Task (BART) Phaser game",
+    "private": true,
+    "scripts": {
+        "dev": "serve .",
+        "start": "serve ."
+    },
+    "devDependencies": {
+        "serve": "^14.2.5"
+    }
+}

@@ -34,6 +34,58 @@ export class GameScene extends Phaser.Scene {
         
         // Data Logging
         this.trialLog = [];
+        
+        // Audio cleanup tracking
+        this.audioNodes = [];
+    }
+    
+    // Cleanup audio nodes on scene shutdown
+    shutdown() {
+        // Stop and dispose all audio nodes
+        if (this.audioNodes) {
+            this.audioNodes.forEach(node => {
+                try {
+                    if (node && typeof node.stop === 'function') {
+                        node.stop();
+                    }
+                    if (node && typeof node.dispose === 'function') {
+                        node.dispose();
+                    }
+                } catch(e) {
+                    // Silently handle cleanup errors
+                }
+            });
+            this.audioNodes = [];
+        }
+    }
+    
+    // Helper to track and auto-cleanup audio nodes
+    trackAudioNode(node, cleanupTime) {
+        if (!node) return node;
+        
+        this.audioNodes.push(node);
+        if (cleanupTime) {
+            this.time.delayedCall(cleanupTime, () => {
+                try {
+                    const index = this.audioNodes.indexOf(node);
+                    if (index > -1) {
+                        // Stop if it has a stop method
+                        if (node.stop && typeof node.stop === 'function') {
+                            try { node.stop(); } catch(e) {}
+                        }
+                        // Dispose if it has a dispose method
+                        if (node.dispose && typeof node.dispose === 'function') {
+                            try { node.dispose(); } catch(e) {}
+                        }
+                        // Remove from tracking
+                        this.audioNodes.splice(index, 1);
+                    }
+                } catch(e) {
+                    // Silently handle any cleanup errors
+                }
+            });
+        }
+        return node;
     }
 
     create() {
@@ -103,15 +155,19 @@ export class GameScene extends Phaser.Scene {
         ];
 
         // 2. Main Block: 60 trials
-        // Trials 1-20: low-risk (blue-type, mean ≈ 64 pumps)
-        // Trials 21-40: medium-risk (yellow-type, mean ≈ 16 pumps)
-        // Trials 41-60: high-risk (red-type, mean ≈ 4 pumps)
-        // Exact sequence is fixed and identical for all participants per DESIGN_NOTES.md
+        // Each color/risk level: 20 trials each (low, medium, high)
+        // Mixed order but deterministic (same for all participants)
         const mainTypes = [
-            ...Array(20).fill('low'),      // Trials 1-20
-            ...Array(20).fill('medium'),   // Trials 21-40
-            ...Array(20).fill('high')      // Trials 41-60
+            ...Array(20).fill('low'),      // 20 low-risk
+            ...Array(20).fill('medium'),   // 20 medium-risk
+            ...Array(20).fill('high')      // 20 high-risk
         ];
+        
+        // Deterministic shuffle to mix the order
+        for (let i = mainTypes.length - 1; i > 0; i--) {
+            const j = Math.floor(seededRandom() * (i + 1));
+            [mainTypes[i], mainTypes[j]] = [mainTypes[j], mainTypes[i]];
+        }
         
         // Create full trial objects for Main with deterministic burst points
         const mainTrials = mainTypes.map(type => {
@@ -489,25 +545,24 @@ export class GameScene extends Phaser.Scene {
         // Play inflate sound
         try {
             // "Pshhh" sound for air pumping
-            const noise = new Tone.Noise("white").toDestination();
             const filter = new Tone.Filter(1000, "lowpass").toDestination();
+            const noise = new Tone.Noise("white").connect(filter);
             
-            noise.connect(filter);
             noise.volume.value = -10;
             
             // Envelope for the "whoosh"
-            noise.start();
-            filter.frequency.setValueAtTime(800, Tone.now());
+            const now = Tone.now();
+            noise.start(now);
+            filter.frequency.setValueAtTime(800, now);
             filter.frequency.rampTo(2000, 0.1); // Open up filter
             
-            noise.stop("+0.2"); // Short burst
-            
-            // Cleanup
-            setTimeout(() => {
-                noise.dispose();
-                filter.dispose();
-            }, 300);
-        } catch(e) {}
+            // Stop and cleanup after 200ms
+            noise.stop(now + 0.2);
+            this.trackAudioNode(noise, 250);
+            this.trackAudioNode(filter, 250);
+        } catch(e) {
+            console.warn('Pump audio error:', e);
+        }
 
         // Floating Text Effect
         const floatText = this.add.text(
@@ -573,8 +628,11 @@ export class GameScene extends Phaser.Scene {
             metal.volume.value = -15;
             metal.triggerAttackRelease("32n", now + 0.1);
             
+            // Cleanup after sounds finish (300ms total)
+            this.trackAudioNode(synth, 350);
+            this.trackAudioNode(metal, 350);
         } catch(e) {
-            console.error('Audio play error', e);
+            console.warn('Collect audio error:', e);
         }
         
         // Animation for collecting
@@ -604,23 +662,22 @@ export class GameScene extends Phaser.Scene {
         // Play explosion sound via Tone.js
         try {
             // Louder explosion
-            const noise = new Tone.Noise("brown").toDestination();
-            noise.volume.value = 0; // Increased from -10 to 0 (max without clipping usually)
-            
             const filter = new Tone.Filter(3000, "lowpass").toDestination();
-            noise.connect(filter);
+            const noise = new Tone.Noise("brown").connect(filter);
             
-            noise.start();
+            noise.volume.value = 0; // Max without clipping usually
+            
+            const now = Tone.now();
+            noise.start(now);
             noise.volume.rampTo(-Infinity, 1.2); // Longer decay
             filter.frequency.rampTo(100, 1.0); 
             
-            setTimeout(() => {
-                noise.stop();
-                noise.dispose();
-                filter.dispose();
-            }, 1500);
+            // Stop after 1.2 seconds and cleanup
+            noise.stop(now + 1.2);
+            this.trackAudioNode(noise, 1500);
+            this.trackAudioNode(filter, 1500);
         } catch(e) {
-            console.error('Audio play error', e);
+            console.warn('Explosion audio error:', e);
         }
 
         // Camera Flash
