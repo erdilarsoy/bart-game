@@ -1,4 +1,4 @@
-import Phaser from 'phaser';
+import Phaser from 'https://esm.sh/phaser@3.70.0';
 import { BootScene } from './scenes/BootScene.js';
 import { StartScene } from './scenes/StartScene.js';
 import { GameScene } from './scenes/GameScene.js';

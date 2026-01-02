@@ -1,4 +1,4 @@
-import Phaser from 'phaser';
+import Phaser from 'https://esm.sh/phaser@3.70.0';
 
 export class GameOverScene extends Phaser.Scene {
     constructor() {
