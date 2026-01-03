@@ -111,8 +111,30 @@ export class GameScene extends Phaser.Scene {
         // Ensure Audio Context is running on any input
         this.input.on('pointerdown', async () => {
             if (Tone.context.state !== 'running') {
-                await Tone.start();
+                try {
+                    await Tone.start();
+                } catch(e) {
+                    console.warn('Failed to start audio context:', e);
+                }
             }
+        });
+        
+        // Periodic audio context check and maintenance (every 5 seconds)
+        this.time.addEvent({
+            delay: 5000,
+            callback: () => {
+                // Ensure context is running
+                if (Tone.context.state !== 'running') {
+                    Tone.start().catch(e => {
+                        console.warn('Periodic audio context restart failed:', e);
+                    });
+                }
+                // Cleanup old nodes periodically
+                if (this.audioNodes && this.audioNodes.length > 15) {
+                    this.cleanupOldAudioNodes();
+                }
+            },
+            loop: true
         });
 
         // Generate a shard texture for explosion
@@ -400,6 +422,18 @@ export class GameScene extends Phaser.Scene {
             // End Game
             this.scene.start('GameOverScene', { score: this.totalMoney, stats: window.stats });
             return;
+        }
+        
+        // Ensure Audio Context is active at start of each trial
+        if (Tone.context.state !== 'running') {
+            Tone.start().catch(e => {
+                console.warn('Audio context start failed:', e);
+            });
+        }
+        
+        // Periodic cleanup of old audio nodes (every 10 trials)
+        if (this.currentTrialIndex > 0 && this.currentTrialIndex % 10 === 0) {
+            this.cleanupOldAudioNodes();
         }
         
         // Init timing for this trial
@@ -741,10 +775,68 @@ export class GameScene extends Phaser.Scene {
         this.isPumpInProgress = true; // Block input during transition
         this.currentTrialIndex++;
         
+        // Ensure audio context stays active between trials
+        if (Tone.context.state !== 'running') {
+            Tone.start().catch(e => {
+                console.warn('Audio context resume failed:', e);
+            });
+        }
+        
         // Wait for visual transition before starting next trial logic
         this.time.delayedCall(500, () => {
             this.startTrial();
         });
+    }
+    
+    // Cleanup old audio nodes that should have finished
+    cleanupOldAudioNodes() {
+        if (!this.audioNodes || this.audioNodes.length === 0) return;
+        
+        const now = Date.now();
+        // Keep only recent nodes, remove nodes that are likely finished
+        const activeNodes = this.audioNodes.filter(node => {
+            try {
+                // If node has a state property and it's still active, keep it
+                if (node.state && node.state !== 'stopped') {
+                    return true;
+                }
+                // Otherwise check if it has volume and is connected
+                if (node.volume && node.context && node.context.state === 'running') {
+                    return true;
+                }
+                // If we can't determine, assume it's done and dispose
+                return false;
+            } catch(e) {
+                // If checking state throws error, node is likely disposed
+                return false;
+            }
+        });
+        
+        // Dispose nodes that are being removed
+        this.audioNodes.forEach(node => {
+            if (activeNodes.indexOf(node) === -1) {
+                try {
+                    if (node.disconnect) node.disconnect();
+                    if (node.dispose) node.dispose();
+                } catch(e) {
+                    // Already disposed
+                }
+            }
+        });
+        
+        this.audioNodes = activeNodes;
+        
+        // If we still have too many nodes, force cleanup
+        if (this.audioNodes.length > 20) {
+            console.warn(`Too many audio nodes (${this.audioNodes.length}), forcing cleanup`);
+            this.audioNodes.slice(0, 10).forEach(node => {
+                try {
+                    if (node.disconnect) node.disconnect();
+                    if (node.dispose) node.dispose();
+                } catch(e) {}
+            });
+            this.audioNodes = this.audioNodes.slice(10);
+        }
     }
 
     logTrial(exploded) {
