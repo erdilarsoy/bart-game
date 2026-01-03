@@ -425,9 +425,14 @@ export class GameScene extends Phaser.Scene {
         }
         
         // Ensure Audio Context is active at start of each trial
-        if (Tone.context.state !== 'running') {
+        // Force start at critical transition points (tutorial to main, every 10 trials)
+        if (Tone.context.state !== 'running' || this.currentTrialIndex === 3 || this.currentTrialIndex % 10 === 0) {
             Tone.start().catch(e => {
                 console.warn('Audio context start failed:', e);
+            });
+            // Small delay to ensure context is ready before proceeding
+            this.time.delayedCall(50, () => {
+                // Context should be ready now
             });
         }
         
@@ -594,25 +599,30 @@ export class GameScene extends Phaser.Scene {
         
         // Play inflate sound
         try {
-            // Ensure audio context is ready
+            // Ensure audio context is ready - use start() not resume()
             if (Tone.context.state !== 'running') {
-                Tone.context.resume();
+                Tone.start().catch(e => {
+                    console.warn('Pump audio context start failed:', e);
+                });
             }
             
-            // "Pshhh" sound for air pumping
-            const filter = this.trackAudioNode(new Tone.Filter(1000, "lowpass").toDestination(), 250);
-            const noise = this.trackAudioNode(new Tone.Noise("white").connect(filter), 250);
-            
-            noise.volume.value = -10;
-            
-            // Envelope for the "whoosh"
-            const now = Tone.now();
-            noise.start(now);
-            filter.frequency.setValueAtTime(800, now);
-            filter.frequency.rampTo(2000, 0.1); // Open up filter
-            
-            // Stop after 200ms
-            noise.stop(now + 0.2);
+            // Only play sound if context is running
+            if (Tone.context.state === 'running') {
+                // "Pshhh" sound for air pumping
+                const filter = this.trackAudioNode(new Tone.Filter(1000, "lowpass").toDestination(), 250);
+                const noise = this.trackAudioNode(new Tone.Noise("white").connect(filter), 250);
+                
+                noise.volume.value = -10;
+                
+                // Envelope for the "whoosh"
+                const now = Tone.now();
+                noise.start(now);
+                filter.frequency.setValueAtTime(800, now);
+                filter.frequency.rampTo(2000, 0.1); // Open up filter
+                
+                // Stop after 200ms
+                noise.stop(now + 0.1);
+            }
         } catch(e) {
             console.warn('Pump audio error:', e);
         }
@@ -643,9 +653,11 @@ export class GameScene extends Phaser.Scene {
     collectMoney() {
         if (this.isPumpInProgress || this.currentMoney === 0) return;
         
-        // Ensure audio context is ready on interaction
+        // Ensure audio context is ready on interaction - use start() not resume()
         if (Tone.context.state !== 'running') {
-            Tone.context.resume();
+            Tone.start().catch(e => {
+                console.warn('Collect audio context start failed:', e);
+            });
         }
         
         // Add to bank
@@ -656,35 +668,40 @@ export class GameScene extends Phaser.Scene {
         
         // Play Cash Register Sound
         try {
-            // Ensure audio context is ready
+            // Ensure audio context is ready - use start() not resume()
             if (Tone.context.state !== 'running') {
-                Tone.context.resume();
+                Tone.start().catch(e => {
+                    console.warn('Collect audio context start failed:', e);
+                });
             }
             
-            // A sequence of sounds to mimic "Ka-Ching"
-            const synth = this.trackAudioNode(new Tone.PolySynth(Tone.Synth).toDestination(), 400);
-            synth.set({
-                envelope: { attack: 0.001, decay: 0.1, sustain: 0, release: 0.1 },
-                volume: -10
-            });
-            
-            // "Ka" (Mechanical/Noise-like)
-            // "Ching" (High Bell)
-            const now = Tone.now();
-            synth.triggerAttackRelease(["C6", "E6"], "16n", now);
-            synth.triggerAttackRelease(["G6", "B6"], "8n", now + 0.1);
-            
-            // Add a metallic hit
-            const metal = this.trackAudioNode(new Tone.MetalSynth({
-                frequency: 200,
-                envelope: { attack: 0.001, decay: 0.1, release: 0.01 },
-                harmonicity: 5.1,
-                modulationIndex: 32,
-                resonance: 4000,
-                octaves: 1.5
-            }).toDestination(), 400);
-            metal.volume.value = -15;
-            metal.triggerAttackRelease("32n", now + 0.1);
+            // Only play sound if context is running
+            if (Tone.context.state === 'running') {
+                // A sequence of sounds to mimic "Ka-Ching"
+                const synth = this.trackAudioNode(new Tone.PolySynth(Tone.Synth).toDestination(), 400);
+                synth.set({
+                    envelope: { attack: 0.001, decay: 0.1, sustain: 0, release: 0.1 },
+                    volume: -10
+                });
+                
+                // "Ka" (Mechanical/Noise-like)
+                // "Ching" (High Bell)
+                const now = Tone.now();
+                synth.triggerAttackRelease(["C6", "E6"], "16n", now);
+                synth.triggerAttackRelease(["G6", "B6"], "8n", now + 0.1);
+                
+                // Add a metallic hit
+                const metal = this.trackAudioNode(new Tone.MetalSynth({
+                    frequency: 200,
+                    envelope: { attack: 0.001, decay: 0.1, release: 0.01 },
+                    harmonicity: 5.1,
+                    modulationIndex: 32,
+                    resonance: 4000,
+                    octaves: 1.5
+                }).toDestination(), 400);
+                metal.volume.value = -15;
+                metal.triggerAttackRelease("32n", now + 0.1);
+            }
         } catch(e) {
             console.warn('Collect audio error:', e);
         }
@@ -708,31 +725,38 @@ export class GameScene extends Phaser.Scene {
         // Visual Pop
         this.balloonSprite.setVisible(false);
         
-        // Ensure audio context is running
+        // Ensure audio context is running - use start() not resume()
         if (Tone.context.state !== 'running') {
-            Tone.context.resume();
+            Tone.start().catch(e => {
+                console.warn('Pop audio context start failed:', e);
+            });
         }
 
         // Play explosion sound via Tone.js
         try {
-            // Ensure audio context is ready
+            // Ensure audio context is ready - use start() not resume()
             if (Tone.context.state !== 'running') {
-                Tone.context.resume();
+                Tone.start().catch(e => {
+                    console.warn('Pop audio context start failed:', e);
+                });
             }
             
-            // Louder explosion
-            const filter = this.trackAudioNode(new Tone.Filter(3000, "lowpass").toDestination(), 1500);
-            const noise = this.trackAudioNode(new Tone.Noise("brown").connect(filter), 1500);
-            
-            noise.volume.value = 0; // Max without clipping usually
-            
-            const now = Tone.now();
-            noise.start(now);
-            noise.volume.rampTo(-Infinity, 1.2); // Longer decay
-            filter.frequency.rampTo(100, 1.0); 
-            
-            // Stop after 1.2 seconds
-            noise.stop(now + 1.2);
+            // Only play sound if context is running
+            if (Tone.context.state === 'running') {
+                // Louder explosion
+                const filter = this.trackAudioNode(new Tone.Filter(3000, "lowpass").toDestination(), 1500);
+                const noise = this.trackAudioNode(new Tone.Noise("brown").connect(filter), 1500);
+                
+                noise.volume.value = 0; // Max without clipping usually
+                
+                const now = Tone.now();
+                noise.start(now);
+                noise.volume.rampTo(-Infinity, 1.2); // Longer decay
+                filter.frequency.rampTo(100, 1.0); 
+                
+                // Stop after 1.2 seconds
+                noise.stop(now + 1.2);
+            }
         } catch(e) {
             console.warn('Explosion audio error:', e);
         }
@@ -776,10 +800,27 @@ export class GameScene extends Phaser.Scene {
         this.currentTrialIndex++;
         
         // Ensure audio context stays active between trials
+        // Especially important at transition points
         if (Tone.context.state !== 'running') {
             Tone.start().catch(e => {
-                console.warn('Audio context resume failed:', e);
+                console.warn('Audio context start failed in endTrial:', e);
             });
+        } else {
+            // Even if running, ensure it's truly active
+            // Sometimes context shows as running but isn't actually producing sound
+            try {
+                // Test context by trying to access it
+                const testNode = new Tone.Oscillator().toDestination();
+                testNode.start();
+                testNode.stop();
+                testNode.dispose();
+            } catch(e) {
+                // Context might be broken, restart it
+                console.warn('Audio context test failed, restarting:', e);
+                Tone.start().catch(err => {
+                    console.warn('Audio context restart failed:', err);
+                });
+            }
         }
         
         // Wait for visual transition before starting next trial logic
