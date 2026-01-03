@@ -64,18 +64,34 @@ export class GameScene extends Phaser.Scene {
         if (!node) return node;
         
         this.audioNodes.push(node);
-        if (cleanupTime) {
+        if (cleanupTime && this.time) {
             this.time.delayedCall(cleanupTime, () => {
                 try {
                     const index = this.audioNodes.indexOf(node);
                     if (index > -1) {
-                        // Stop if it has a stop method
+                        // Stop if it has a stop method (and not already stopped)
                         if (node.stop && typeof node.stop === 'function') {
-                            try { node.stop(); } catch(e) {}
+                            try { 
+                                node.stop(); 
+                            } catch(e) {
+                                // Node may already be stopped
+                            }
+                        }
+                        // Disconnect before disposing
+                        if (node.disconnect && typeof node.disconnect === 'function') {
+                            try {
+                                node.disconnect();
+                            } catch(e) {
+                                // Already disconnected
+                            }
                         }
                         // Dispose if it has a dispose method
                         if (node.dispose && typeof node.dispose === 'function') {
-                            try { node.dispose(); } catch(e) {}
+                            try { 
+                                node.dispose(); 
+                            } catch(e) {
+                                // May already be disposed
+                            }
                         }
                         // Remove from tracking
                         this.audioNodes.splice(index, 1);
@@ -544,9 +560,14 @@ export class GameScene extends Phaser.Scene {
         
         // Play inflate sound
         try {
+            // Ensure audio context is ready
+            if (Tone.context.state !== 'running') {
+                Tone.context.resume();
+            }
+            
             // "Pshhh" sound for air pumping
-            const filter = new Tone.Filter(1000, "lowpass").toDestination();
-            const noise = new Tone.Noise("white").connect(filter);
+            const filter = this.trackAudioNode(new Tone.Filter(1000, "lowpass").toDestination(), 250);
+            const noise = this.trackAudioNode(new Tone.Noise("white").connect(filter), 250);
             
             noise.volume.value = -10;
             
@@ -556,10 +577,8 @@ export class GameScene extends Phaser.Scene {
             filter.frequency.setValueAtTime(800, now);
             filter.frequency.rampTo(2000, 0.1); // Open up filter
             
-            // Stop and cleanup after 200ms
+            // Stop after 200ms
             noise.stop(now + 0.2);
-            this.trackAudioNode(noise, 250);
-            this.trackAudioNode(filter, 250);
         } catch(e) {
             console.warn('Pump audio error:', e);
         }
@@ -603,8 +622,13 @@ export class GameScene extends Phaser.Scene {
         
         // Play Cash Register Sound
         try {
+            // Ensure audio context is ready
+            if (Tone.context.state !== 'running') {
+                Tone.context.resume();
+            }
+            
             // A sequence of sounds to mimic "Ka-Ching"
-            const synth = new Tone.PolySynth(Tone.Synth).toDestination();
+            const synth = this.trackAudioNode(new Tone.PolySynth(Tone.Synth).toDestination(), 400);
             synth.set({
                 envelope: { attack: 0.001, decay: 0.1, sustain: 0, release: 0.1 },
                 volume: -10
@@ -617,20 +641,16 @@ export class GameScene extends Phaser.Scene {
             synth.triggerAttackRelease(["G6", "B6"], "8n", now + 0.1);
             
             // Add a metallic hit
-            const metal = new Tone.MetalSynth({
+            const metal = this.trackAudioNode(new Tone.MetalSynth({
                 frequency: 200,
                 envelope: { attack: 0.001, decay: 0.1, release: 0.01 },
                 harmonicity: 5.1,
                 modulationIndex: 32,
                 resonance: 4000,
                 octaves: 1.5
-            }).toDestination();
+            }).toDestination(), 400);
             metal.volume.value = -15;
             metal.triggerAttackRelease("32n", now + 0.1);
-            
-            // Cleanup after sounds finish (300ms total)
-            this.trackAudioNode(synth, 350);
-            this.trackAudioNode(metal, 350);
         } catch(e) {
             console.warn('Collect audio error:', e);
         }
@@ -661,9 +681,14 @@ export class GameScene extends Phaser.Scene {
 
         // Play explosion sound via Tone.js
         try {
+            // Ensure audio context is ready
+            if (Tone.context.state !== 'running') {
+                Tone.context.resume();
+            }
+            
             // Louder explosion
-            const filter = new Tone.Filter(3000, "lowpass").toDestination();
-            const noise = new Tone.Noise("brown").connect(filter);
+            const filter = this.trackAudioNode(new Tone.Filter(3000, "lowpass").toDestination(), 1500);
+            const noise = this.trackAudioNode(new Tone.Noise("brown").connect(filter), 1500);
             
             noise.volume.value = 0; // Max without clipping usually
             
@@ -672,10 +697,8 @@ export class GameScene extends Phaser.Scene {
             noise.volume.rampTo(-Infinity, 1.2); // Longer decay
             filter.frequency.rampTo(100, 1.0); 
             
-            // Stop after 1.2 seconds and cleanup
+            // Stop after 1.2 seconds
             noise.stop(now + 1.2);
-            this.trackAudioNode(noise, 1500);
-            this.trackAudioNode(filter, 1500);
         } catch(e) {
             console.warn('Explosion audio error:', e);
         }
