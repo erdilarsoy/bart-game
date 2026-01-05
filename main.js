@@ -7,10 +7,10 @@ import { GameOverScene } from './scenes/GameOverScene.js';
 const config = {
     type: Phaser.AUTO,
     scale: {
-        mode: Phaser.Scale.FIT,
+        mode: Phaser.Scale.RESIZE,
         autoCenter: Phaser.Scale.CENTER_BOTH,
-        width: 1920,
-        height: 1080
+        width: '100%',
+        height: '100%'
     },
     backgroundColor: '#f5f0e6', // Fallback color
     scene: [BootScene, StartScene, GameScene, GameOverScene],

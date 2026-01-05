@@ -18,7 +18,7 @@ export class GameScene extends Phaser.Scene {
         this.totalMoney = 0;
         this.balloonPumps = 0;
         this.isPumpInProgress = false;
-        
+
         // Configuration for balloon types
         // Old colors restored:
         // Training -> Green
@@ -26,19 +26,19 @@ export class GameScene extends Phaser.Scene {
         // Medium -> Amber
         // High -> Deep Pink
         this.balloonTypes = {
-            'training': { color: 0x4CAF50, maxPumps: 32, valuePerPump: 1, sprite: 'balloon-white', name: 'Training' },
-            'low': { color: 0x008080, maxPumps: 128, valuePerPump: 5, sprite: 'balloon-white', name: 'Low Risk' }, 
-            'medium': { color: 0xFFBF00, maxPumps: 32, valuePerPump: 15, sprite: 'balloon-white', name: 'Medium Risk' },
-            'high': { color: 0xFF4081, maxPumps: 8, valuePerPump: 50, sprite: 'balloon-white', name: 'High Risk' }
+            'training': { color: null, maxPumps: 32, valuePerPump: 1, sprite: 'balloon-green', name: 'Training' },
+            'low': { color: null, maxPumps: 128, valuePerPump: 5, sprite: 'balloon-blue', name: 'Low Risk' },
+            'medium': { color: null, maxPumps: 32, valuePerPump: 15, sprite: 'balloon-yellow', name: 'Medium Risk' },
+            'high': { color: null, maxPumps: 8, valuePerPump: 50, sprite: 'balloon-red', name: 'High Risk' }
         };
-        
+
         // Data Logging
         this.trialLog = [];
-        
+
         // Audio cleanup tracking
         this.audioNodes = [];
     }
-    
+
     // Cleanup audio nodes on scene shutdown
     shutdown() {
         // Stop and dispose all audio nodes
@@ -51,18 +51,18 @@ export class GameScene extends Phaser.Scene {
                     if (node && typeof node.dispose === 'function') {
                         node.dispose();
                     }
-                } catch(e) {
+                } catch (e) {
                     // Silently handle cleanup errors
                 }
             });
             this.audioNodes = [];
         }
     }
-    
+
     // Helper to track and auto-cleanup audio nodes
     trackAudioNode(node, cleanupTime) {
         if (!node) return node;
-        
+
         this.audioNodes.push(node);
         if (cleanupTime && this.time) {
             this.time.delayedCall(cleanupTime, () => {
@@ -71,9 +71,9 @@ export class GameScene extends Phaser.Scene {
                     if (index > -1) {
                         // Stop if it has a stop method (and not already stopped)
                         if (node.stop && typeof node.stop === 'function') {
-                            try { 
-                                node.stop(); 
-                            } catch(e) {
+                            try {
+                                node.stop();
+                            } catch (e) {
                                 // Node may already be stopped
                             }
                         }
@@ -81,22 +81,22 @@ export class GameScene extends Phaser.Scene {
                         if (node.disconnect && typeof node.disconnect === 'function') {
                             try {
                                 node.disconnect();
-                            } catch(e) {
+                            } catch (e) {
                                 // Already disconnected
                             }
                         }
                         // Dispose if it has a dispose method
                         if (node.dispose && typeof node.dispose === 'function') {
-                            try { 
-                                node.dispose(); 
-                            } catch(e) {
+                            try {
+                                node.dispose();
+                            } catch (e) {
                                 // May already be disposed
                             }
                         }
                         // Remove from tracking
                         this.audioNodes.splice(index, 1);
                     }
-                } catch(e) {
+                } catch (e) {
                     // Silently handle any cleanup errors
                 }
             });
@@ -107,18 +107,18 @@ export class GameScene extends Phaser.Scene {
     create() {
         // Expose log globally for easy access
         window.trialLog = this.trialLog;
-        
+
         // Ensure Audio Context is running on any input
         this.input.on('pointerdown', async () => {
-            if (Tone.context.state !== 'running') {
+            if (Tone && Tone.context && Tone.context.state !== 'running') {
                 try {
                     await Tone.start();
-                } catch(e) {
+                } catch (e) {
                     console.warn('Failed to start audio context:', e);
                 }
             }
         });
-        
+
         // Periodic audio context check and maintenance (every 5 seconds)
         this.time.addEvent({
             delay: 5000,
@@ -150,24 +150,30 @@ export class GameScene extends Phaser.Scene {
         shardGraphics.generateTexture('shard', 20, 20);
 
         // Setup background
-        const bg = this.add.image(0, 0, 'background-paper').setOrigin(0, 0);
-        bg.displayWidth = this.cameras.main.width;
-        bg.displayHeight = this.cameras.main.height;
+        this.bg = this.add.image(0, 0, 'bg').setOrigin(0, 0);
+
+        // Add Header/Footer UI
+        this.header = this.add.image(0, 0, 'ui-header').setOrigin(0.5, 0); // Position at top
+        this.footer = this.add.image(0, 0, 'ui-footer').setOrigin(0.5, 1); // Position at bottom
 
         // Initialize Trials
         this.initTrials();
 
         // Create UI
-        this.createHeader();
-        
+        this.createHeader(); // This method is empty but kept for structure
+
         this.createBalloonArea();
         this.createStatsPanel();
         this.createActionButtons();
 
+        // Resize handler
+        this.scale.on('resize', this.resize, this);
+        this.resize(this.scale.gameSize);
+
         // Start first trial
         this.startTrial();
     }
-    
+
     createHose() {
         // Removed as requested
     }
@@ -200,13 +206,13 @@ export class GameScene extends Phaser.Scene {
             ...Array(20).fill('medium'),   // 20 medium-risk
             ...Array(20).fill('high')      // 20 high-risk
         ];
-        
+
         // Deterministic shuffle to mix the order
         for (let i = mainTypes.length - 1; i > 0; i--) {
             const j = Math.floor(seededRandom() * (i + 1));
             [mainTypes[i], mainTypes[j]] = [mainTypes[j], mainTypes[i]];
         }
-        
+
         // Create full trial objects for Main with deterministic burst points
         const mainTrials = mainTypes.map(type => {
             const config = this.balloonTypes[type];
@@ -215,10 +221,10 @@ export class GameScene extends Phaser.Scene {
                 burstPoint: getBurstPoint(config.maxPumps)
             };
         });
-        
+
         // Final Combine: Tutorial + Main
         this.trials = [...tutorialTrials, ...mainTrials];
-        
+
         this.currentTrialIndex = 0;
         this.totalMoney = 0;
     }
@@ -230,157 +236,112 @@ export class GameScene extends Phaser.Scene {
     createBalloonArea() {
         const width = this.cameras.main.width;
         const height = this.cameras.main.height;
-        
+
         // Container for balloon to handle scaling/shaking
-        // Position lower to allow room for growth (origin is bottom)
-        // Buttons are at height - 100. Stats at height - 300.
-        // Stats box top is at height - 300 - 90 = height - 390.
-        // We place balloon knot at height - 420 to give 30px gap.
-        this.balloonContainer = this.add.container(width/2, height - 420);
-        
-        // Sprite with white texture to be tinted
-        this.balloonSprite = this.add.image(0, 0, 'balloon-white').setOrigin(0.5, 1); // Origin at bottom knot
+        // Center of screen essentially
+        this.balloonContainer = this.add.container(width / 2, height / 2 - 50);
+
+        // Sprite will be set in startTrial
+        this.balloonSprite = this.add.image(0, 0, 'balloon-blue').setOrigin(0.5, 1); // Origin at bottom knot
         this.balloonContainer.add(this.balloonSprite);
-        
+
         // Start scale
-        this.balloonSprite.setScale(0.4);
+        this.balloonSprite.setScale(0.3);
     }
 
     createStatsPanel() {
         const width = this.cameras.main.width;
         const height = this.cameras.main.height;
-        const panelY = height - 300;
-        
-        const cardStyle = { font: 'bold 32px Calibri', color: '#5a4a3a' };
-        const labelStyle = { font: 'bold 24px Calibri', color: '#8a7a6a' };
-        const numberStyle = { font: 'bold 48px Calibri', color: '#5a4a3a' };
-        
-        // Helper to make card
-        const createCard = (x, titleLines, iconKey, initialValue, isValueMoney) => {
-            const card = this.add.container(x, panelY);
-            const bg = this.add.graphics();
-            bg.fillStyle(0xfffdf5, 1);
-            bg.lineStyle(2, 0xd0c0a0, 1);
-            bg.fillRoundedRect(-180, -90, 360, 180, 20);
-            bg.strokeRoundedRect(-180, -90, 360, 180, 20);
-            card.add(bg);
 
-            // Title
-            let yOffset = -50;
-            titleLines.forEach(line => {
-                const text = this.add.text(0, yOffset, line, labelStyle).setOrigin(0.5);
-                card.add(text);
-                yOffset += 30;
-            });
+        // We will use the icon assets to build the stats UI
+        // Icons: icon-pot (Potential), icon-safe (Total), icon-count (Remaining)
+        // User requested thinner and white font
+        const numberStyle = { font: '48px Calibri', color: '#ffffff' };
 
-            // Value + Icon Container
-            const valueContainer = this.add.container(0, 40);
-            const icon = this.add.image(-40, 0, iconKey).setScale(0.2); // Adjust scale based on actual asset
-            // Limit icon size
-            if(icon.displayHeight > 60) icon.setDisplaySize(60, 60); // approximate aspect ratio
-            
-            const valueText = this.add.text(20, 0, initialValue, numberStyle).setOrigin(0, 0.5);
-            
-            valueContainer.add([icon, valueText]);
-            // Center the value container
-            const totalW = 60 + valueText.width;
-            valueContainer.x = -totalW/2 + 30; // approx centering
-            
-            card.add(valueContainer);
-            
-            return { container: card, valueText: valueText, valueContainer: valueContainer };
+        // 1. Potential (Left)
+        // Position: Bottom Left area
+        const statsY = height - 150; // Lower them a bit
+        // Spacing: width is 1920. Center is 960. 
+        // Let's spread them: Potential (Left), Total (Center), Count (Right)
+        // But Buttons are also there.
+        // Previous design: Stats were at height - 300. Buttons at height - 100.
+        // Let's revert to height - 300 for Stats to be above buttons.
+        const statsY_Upper = height - 300;
+
+        const spacing = 450;
+
+        const createStatGroup = (x, iconKey, initialVal) => {
+            const container = this.add.container(x, statsY_Upper);
+
+            const icon = this.add.image(0, 0, iconKey).setOrigin(0.5);
+            container.add(icon);
+
+            // Value text centered on the icon (assuming icon is a panel)
+            // Or slightly below if it's just an icon. 
+            // The assets (e.g. POTANSİYELKAZANÇ) likely include text and a box.
+            // Let's place the number in the "box" area.
+            // Since I can't see the image, I'll stick to center with a slight Y offset if needed.
+            // Based on previous code: container.add([icon, valueText])
+
+            // Value text centered on the icon (assuming icon is a panel)
+            const valText = this.add.text(0, 5, initialVal, numberStyle).setOrigin(0.5);
+            container.add(valText);
+
+            return { container, valText };
         };
 
-        const spacing = 420;
-        this.cardCurrent = createCard(width/2 - spacing, ['Bu balonun', 'potansiyel kazancı'], 'icon-coin', '0', true);
-        this.cardTotal = createCard(width/2, ['Şimdiye kadar', 'toplanan para'], 'icon-coins-stack', '0', true);
-        
-        // Balloon count card slightly different
-        const cardCount = this.add.container(width/2 + spacing, panelY);
-        const bg = this.add.graphics();
-        bg.fillStyle(0xfffdf5, 1);
-        bg.lineStyle(2, 0xd0c0a0, 1);
-        bg.fillRoundedRect(-180, -90, 360, 180, 20);
-        bg.strokeRoundedRect(-180, -90, 360, 180, 20);
-        cardCount.add(bg);
-        const lbl = this.add.text(0, -55, 'Kalan balon sayısı', labelStyle).setOrigin(0.5);
-        this.phaseLabel = this.add.text(0, -25, '(Deneme)', { font: 'bold 24px Calibri', color: '#8a7a6a' }).setOrigin(0.5);
-        
-        // Update initial text to reflect new trial count
-        this.trialText = this.add.text(0, 35, '', numberStyle).setOrigin(0.5, 0.5);
-        
-        cardCount.add([lbl, this.phaseLabel, this.trialText]);
-        this.cardCount = { container: cardCount, text: this.trialText };
+        // Left: Potential
+        this.statPotential = createStatGroup(width / 2 - spacing, 'icon-pot', '0');
+
+        // Center: Total Safe Money
+        this.statTotal = createStatGroup(width / 2, 'icon-safe', '0');
+
+        // Right: Balloon Count
+        // For count, we might want a phase label too
+        this.statCount = createStatGroup(width / 2 + spacing, 'icon-count', '');
+
+        // Add Phase Label to count container
+        this.phaseLabel = this.add.text(0, -60, '(Test)', { font: 'bold 24px Calibri', color: '#8a7a6a' }).setOrigin(0.5);
+        this.statCount.container.add(this.phaseLabel);
+
+        // Store references for updates
+        // Use consistent names expected by updateStats or update updateStats to use these directly
+        this.cardCurrent = { valueText: this.statPotential.valText };
+        this.cardTotal = { container: this.statTotal.container, valueText: this.statTotal.valText };
+
+        // Expose trialText alias for updateStats
+        this.trialText = this.statCount.valText;
     }
 
     createActionButtons() {
         const width = this.cameras.main.width;
         const height = this.cameras.main.height;
         const btnY = height - 100;
-        
+
         // Helper
-        const createButton = (x, color, strokeColor, text, callback) => {
-            const btn = this.add.container(x, btnY);
-            
-            // Background
-            const bg = this.add.graphics();
-            bg.fillStyle(color, 1);
-            bg.lineStyle(4, strokeColor, 1);
-            bg.fillRoundedRect(-200, -50, 400, 100, 25);
-            bg.strokeRoundedRect(-200, -50, 400, 100, 25);
-            
-            // Highlight
-            const highlight = this.add.graphics();
-            highlight.lineStyle(4, 0xffffff, 0.3);
-            highlight.strokeRoundedRect(-196, -46, 392, 92, 20);
-            
-            // Text
-            const txt = this.add.text(0, 0, text, {
-                font: 'bold 40px Calibri',
-                color: '#5a4a3a',
-                shadow: { offsetX: 1, offsetY: 1, color: '#fff', blur: 0, fill: true }
-            }).setOrigin(0.5);
-            
-            btn.add([bg, highlight, txt]);
-            
-            // Use a Zone for interaction - clearer hit area handling
-            const hitZone = this.add.zone(0, 0, 400, 100);
-            btn.add(hitZone);
-            
-            hitZone.setInteractive({ useHandCursor: true });
-            
-            hitZone.on('pointerover', () => {
+        const createButton = (x, key, callback) => {
+            const btn = this.add.image(x, btnY, key).setOrigin(0.5);
+            btn.setInteractive({ useHandCursor: true });
+
+            btn.on('pointerover', () => btn.setScale(1.05));
+            btn.on('pointerout', () => btn.setScale(1));
+            btn.on('pointerdown', () => btn.setScale(0.95));
+            btn.on('pointerup', () => {
                 btn.setScale(1.05);
-            });
-
-            hitZone.on('pointerout', () => {
-                btn.setScale(1);
-            });
-
-            hitZone.on('pointerdown', () => {
-                btn.setScale(0.95); // Press effect via scale instead of Y
-            });
-            
-            hitZone.on('pointerup', () => {
-                btn.setScale(1.05); // Return to hover scale
-                console.log('Button clicked:', text);
                 // Ensure audio context is ready on interaction
                 if (Tone.context.state !== 'running') {
                     Tone.context.resume();
                 }
                 callback();
             });
-            
             return btn;
         };
 
-        // Yellow: 0xffe066 (Reference-ish), Green: 0x88cc66
-        this.pumpBtn = createButton(width/2 - 220, 0xffd54f, 0xcca000, 'Şişir', () => {
-            console.log('Pump action triggered');
+        this.pumpBtn = createButton(width / 2 - 200, 'btn-pump', () => {
             this.pumpBalloon();
         });
-        this.collectBtn = createButton(width/2 + 220, 0x81c784, 0x519657, 'Kasaya Gönder $$', () => {
-            console.log('Collect action triggered');
+
+        this.collectBtn = createButton(width / 2 + 200, 'btn-collect', () => {
             this.collectMoney();
         });
     }
@@ -416,14 +377,14 @@ export class GameScene extends Phaser.Scene {
                 KD_score: lossSensitivity.score,
                 Speed_score: decisionSpeed.score
             };
-            
+
             console.log('Game Completed. Stats:', window.stats);
 
             // End Game
             this.scene.start('GameOverScene', { score: this.totalMoney, stats: window.stats });
             return;
         }
-        
+
         // Ensure Audio Context is active at start of each trial
         // Force start at critical transition points (tutorial to main, every 10 trials)
         if (Tone.context.state !== 'running' || this.currentTrialIndex === 3 || this.currentTrialIndex % 10 === 0) {
@@ -435,12 +396,12 @@ export class GameScene extends Phaser.Scene {
                 // Context should be ready now
             });
         }
-        
+
         // Periodic cleanup of old audio nodes (every 10 trials)
         if (this.currentTrialIndex > 0 && this.currentTrialIndex % 10 === 0) {
             this.cleanupOldAudioNodes();
         }
-        
+
         // Init timing for this trial
         this.pumpRTs = [];
         this.lastActionTime = Date.now();
@@ -448,44 +409,47 @@ export class GameScene extends Phaser.Scene {
         const trialData = this.trials[this.currentTrialIndex];
         const typeKey = trialData.type;
         this.currentTrialBurstPoint = trialData.burstPoint;
-        
+
         this.currentBalloonConfig = this.balloonTypes[typeKey];
-        
+
         // Reset state
         this.balloonPumps = 0;
-        
+
         // Reset money if this is the first real trial (index 3)
         // Indices 0, 1, 2 are tutorial. Index 3 is first real trial.
         if (this.currentTrialIndex === 3) {
             this.totalMoney = 0;
         }
-        
+
         this.currentMoney = 0;
-        
+
         // Prevent pumping immediately - wait for appearance
-        this.isPumpInProgress = true; 
+        this.isPumpInProgress = true;
 
         // Stop any running tweens on sprite to prevent size carry-over
         this.tweens.killTweensOf(this.balloonSprite);
         this.tweens.killTweensOf(this.balloonContainer);
-        
+
         // Reset Container Position - ensure Y is correct relative to UI
-        this.balloonContainer.setPosition(this.cameras.main.width/2, this.cameras.main.height - 420);
+        this.balloonContainer.setPosition(this.cameras.main.width / 2, this.cameras.main.height - 420);
 
         // Update UI
-        // Start with deflated balloon
-        this.balloonSprite.setTexture('balloon-deflated');
-        this.balloonSprite.setTint(this.currentBalloonConfig.color); // Apply specific color
-        
+        // Update UI
+        // Start with defined sprite
+        this.balloonSprite.setTexture(this.currentBalloonConfig.sprite);
+
+        // Remove tint application
+        this.balloonSprite.clearTint();
+
         // Start very small for pop-in animation
         this.balloonSprite.setScale(0.01);
-        
+
         this.balloonSprite.setAlpha(1);
         this.balloonSprite.setVisible(true);
         this.balloonSprite.setAngle(0); // Reset angle
-        
+
         this.updateStats();
-        
+
         // Pop-in Animation
         this.tweens.add({
             targets: this.balloonSprite,
@@ -499,7 +463,7 @@ export class GameScene extends Phaser.Scene {
                 this.lastActionTime = Date.now(); // Reset RT timer
             }
         });
-        
+
         // Enable buttons by default
         this.pumpBtn.setAlpha(1);
         this.collectBtn.setAlpha(1);
@@ -507,42 +471,36 @@ export class GameScene extends Phaser.Scene {
 
     pumpBalloon() {
         if (this.isPumpInProgress) return;
-        
+
         // Record Reaction Time
         const now = Date.now();
         const rt = now - this.lastActionTime;
         this.pumpRTs.push(rt);
         this.lastActionTime = now;
-        
+
         this.isPumpInProgress = true;
 
         // Use the pre-determined burst point
         // If next pump count (current + 1) equals the burst point, POP.
         const nextPumpCount = this.balloonPumps + 1;
         const willPop = nextPumpCount >= this.currentTrialBurstPoint;
-        
+
         // Also check max pumps config just in case
         const max = this.currentBalloonConfig.maxPumps;
         if (this.balloonPumps >= max) {
-             this.popBalloon();
-             return;
+            this.popBalloon();
+            return;
         }
 
-        // Texture State Management
-        // 0 -> Deflated (Initial)
-        // 1-3 -> Semi
-        // 4+ -> Full
-        if (nextPumpCount === 1) {
-            this.balloonSprite.setTexture('balloon-semi');
-        } else if (nextPumpCount === 4) {
-            this.balloonSprite.setTexture('balloon-full');
-        }
+        // Texture State Management - Removed as we use single sprite now
+        // But we could change sprites if we had multiple states (deflated, full etc)
+        // For now, we rely on scaling physics.
 
         // "Realistic" Growth:
         const currentScale = this.balloonSprite.scaleX;
         // Growth is faster when small, slower when big
-        const growthStep = 0.02 / Math.max(0.2, currentScale); 
-        
+        const growthStep = 0.02 / Math.max(0.2, currentScale);
+
         // Capped at 1.3 to ensure it fits on screen without hitting top or bottom UI
         const targetScale = Math.min(1.3, currentScale + growthStep);
 
@@ -565,7 +523,7 @@ export class GameScene extends Phaser.Scene {
                 }
             }
         });
-        
+
         // Secondary "Squash" before expansion - creates anticipation
         this.tweens.add({
             targets: this.balloonSprite,
@@ -578,7 +536,7 @@ export class GameScene extends Phaser.Scene {
                 // This triggers the main expansion visually nicely
             }
         });
-        
+
         // Secondary "Jiggle" to make it feel like a fluid/gas container
         this.tweens.add({
             targets: this.balloonSprite,
@@ -588,7 +546,7 @@ export class GameScene extends Phaser.Scene {
             repeat: 1,
             ease: 'Sine.easeInOut'
         });
-        
+
         // Shake container less mechanically
         this.tweens.add({
             targets: this.balloonContainer,
@@ -596,7 +554,7 @@ export class GameScene extends Phaser.Scene {
             duration: 60,
             yoyo: true
         });
-        
+
         // Play inflate sound
         try {
             // Ensure audio context is ready - use start() not resume()
@@ -605,38 +563,38 @@ export class GameScene extends Phaser.Scene {
                     console.warn('Pump audio context start failed:', e);
                 });
             }
-            
+
             // Only play sound if context is running
             if (Tone.context.state === 'running') {
                 // "Pshhh" sound for air pumping
                 const filter = this.trackAudioNode(new Tone.Filter(1000, "lowpass").toDestination(), 250);
                 const noise = this.trackAudioNode(new Tone.Noise("white").connect(filter), 250);
-                
+
                 noise.volume.value = -10;
-                
+
                 // Envelope for the "whoosh"
                 const now = Tone.now();
                 noise.start(now);
                 filter.frequency.setValueAtTime(800, now);
                 filter.frequency.rampTo(2000, 0.1); // Open up filter
-                
+
                 // Stop after 200ms
                 noise.stop(now + 0.1);
             }
-        } catch(e) {
+        } catch (e) {
             console.warn('Pump audio error:', e);
         }
 
         // Floating Text Effect
         const floatText = this.add.text(
-            this.balloonContainer.x + (Math.random() * 60 - 30), 
-            this.balloonContainer.y - (this.balloonSprite.displayHeight * targetScale) / 2, 
-            `+$${this.currentBalloonConfig.valuePerPump}`, 
+            this.balloonContainer.x + (Math.random() * 60 - 30),
+            this.balloonContainer.y - (this.balloonSprite.displayHeight * targetScale) / 2,
+            `+${this.currentBalloonConfig.valuePerPump}`,
             {
-                font: 'bold 40px Calibri',
-                color: '#5a4a3a',
-                stroke: '#ffffff',
-                strokeThickness: 4
+                font: '40px Calibri',
+                color: '#ffffff',
+                stroke: '#000000',
+                strokeThickness: 3
             }
         ).setOrigin(0.5);
 
@@ -652,20 +610,20 @@ export class GameScene extends Phaser.Scene {
 
     collectMoney() {
         if (this.isPumpInProgress || this.currentMoney === 0) return;
-        
+
         // Ensure audio context is ready on interaction - use start() not resume()
         if (Tone.context.state !== 'running') {
             Tone.start().catch(e => {
                 console.warn('Collect audio context start failed:', e);
             });
         }
-        
+
         // Add to bank
         this.totalMoney += this.currentMoney;
-        
+
         // Log Success
         this.logTrial(false);
-        
+
         // Play Cash Register Sound
         try {
             // Ensure audio context is ready - use start() not resume()
@@ -674,7 +632,7 @@ export class GameScene extends Phaser.Scene {
                     console.warn('Collect audio context start failed:', e);
                 });
             }
-            
+
             // Only play sound if context is running
             if (Tone.context.state === 'running') {
                 // A sequence of sounds to mimic "Ka-Ching"
@@ -683,13 +641,13 @@ export class GameScene extends Phaser.Scene {
                     envelope: { attack: 0.001, decay: 0.1, sustain: 0, release: 0.1 },
                     volume: -10
                 });
-                
+
                 // "Ka" (Mechanical/Noise-like)
                 // "Ching" (High Bell)
                 const now = Tone.now();
                 synth.triggerAttackRelease(["C6", "E6"], "16n", now);
                 synth.triggerAttackRelease(["G6", "B6"], "8n", now + 0.1);
-                
+
                 // Add a metallic hit
                 const metal = this.trackAudioNode(new Tone.MetalSynth({
                     frequency: 200,
@@ -702,10 +660,10 @@ export class GameScene extends Phaser.Scene {
                 metal.volume.value = -15;
                 metal.triggerAttackRelease("32n", now + 0.1);
             }
-        } catch(e) {
+        } catch (e) {
             console.warn('Collect audio error:', e);
         }
-        
+
         // Animation for collecting
         this.tweens.add({
             targets: this.cardTotal.container,
@@ -724,7 +682,7 @@ export class GameScene extends Phaser.Scene {
 
         // Visual Pop
         this.balloonSprite.setVisible(false);
-        
+
         // Ensure audio context is running - use start() not resume()
         if (Tone.context.state !== 'running') {
             Tone.start().catch(e => {
@@ -740,24 +698,24 @@ export class GameScene extends Phaser.Scene {
                     console.warn('Pop audio context start failed:', e);
                 });
             }
-            
+
             // Only play sound if context is running
             if (Tone.context.state === 'running') {
                 // Louder explosion
                 const filter = this.trackAudioNode(new Tone.Filter(3000, "lowpass").toDestination(), 1500);
                 const noise = this.trackAudioNode(new Tone.Noise("brown").connect(filter), 1500);
-                
+
                 noise.volume.value = 0; // Max without clipping usually
-                
+
                 const now = Tone.now();
                 noise.start(now);
                 noise.volume.rampTo(-Infinity, 1.2); // Longer decay
-                filter.frequency.rampTo(100, 1.0); 
-                
+                filter.frequency.rampTo(100, 1.0);
+
                 // Stop after 1.2 seconds
                 noise.stop(now + 1.2);
             }
-        } catch(e) {
+        } catch (e) {
             console.warn('Explosion audio error:', e);
         }
 
@@ -779,9 +737,9 @@ export class GameScene extends Phaser.Scene {
             quantity: 40,
             emitting: false
         });
-        
+
         particles.explode();
-        
+
         this.time.delayedCall(1000, () => {
             particles.destroy();
         });
@@ -789,7 +747,7 @@ export class GameScene extends Phaser.Scene {
         // Reset current money
         this.currentMoney = 0;
         this.updateStats();
-        
+
         this.time.delayedCall(1500, () => {
             this.endTrial();
         });
@@ -798,7 +756,7 @@ export class GameScene extends Phaser.Scene {
     endTrial() {
         this.isPumpInProgress = true; // Block input during transition
         this.currentTrialIndex++;
-        
+
         // Ensure audio context stays active between trials
         // Especially important at transition points
         if (Tone.context.state !== 'running') {
@@ -814,7 +772,7 @@ export class GameScene extends Phaser.Scene {
                 testNode.start();
                 testNode.stop();
                 testNode.dispose();
-            } catch(e) {
+            } catch (e) {
                 // Context might be broken, restart it
                 console.warn('Audio context test failed, restarting:', e);
                 Tone.start().catch(err => {
@@ -822,17 +780,17 @@ export class GameScene extends Phaser.Scene {
                 });
             }
         }
-        
+
         // Wait for visual transition before starting next trial logic
         this.time.delayedCall(500, () => {
             this.startTrial();
         });
     }
-    
+
     // Cleanup old audio nodes that should have finished
     cleanupOldAudioNodes() {
         if (!this.audioNodes || this.audioNodes.length === 0) return;
-        
+
         const now = Date.now();
         // Keep only recent nodes, remove nodes that are likely finished
         const activeNodes = this.audioNodes.filter(node => {
@@ -847,26 +805,26 @@ export class GameScene extends Phaser.Scene {
                 }
                 // If we can't determine, assume it's done and dispose
                 return false;
-            } catch(e) {
+            } catch (e) {
                 // If checking state throws error, node is likely disposed
                 return false;
             }
         });
-        
+
         // Dispose nodes that are being removed
         this.audioNodes.forEach(node => {
             if (activeNodes.indexOf(node) === -1) {
                 try {
                     if (node.disconnect) node.disconnect();
                     if (node.dispose) node.dispose();
-                } catch(e) {
+                } catch (e) {
                     // Already disposed
                 }
             }
         });
-        
+
         this.audioNodes = activeNodes;
-        
+
         // If we still have too many nodes, force cleanup
         if (this.audioNodes.length > 20) {
             console.warn(`Too many audio nodes (${this.audioNodes.length}), forcing cleanup`);
@@ -874,7 +832,7 @@ export class GameScene extends Phaser.Scene {
                 try {
                     if (node.disconnect) node.disconnect();
                     if (node.dispose) node.dispose();
-                } catch(e) {}
+                } catch (e) { }
             });
             this.audioNodes = this.audioNodes.slice(10);
         }
@@ -911,12 +869,12 @@ export class GameScene extends Phaser.Scene {
             const nonExplodedPumps = mainTrialsSoFar
                 .filter(t => t.explosion === 0)
                 .map(t => t.timesPumped);
-            
+
             // Include current trial if it didn't explode
             if (!exploded) {
                 nonExplodedPumps.push(timesPumped);
             }
-            
+
             if (nonExplodedPumps.length > 0) {
                 const sumPumps = nonExplodedPumps.reduce((sum, p) => sum + p, 0);
                 totalAdjustedBartScoreSoFar = sumPumps / nonExplodedPumps.length;
@@ -942,45 +900,139 @@ export class GameScene extends Phaser.Scene {
     }
 
     updateStats() {
+        if (!this.cardCurrent || !this.cardTotal || !this.trialText) return;
+
         this.cardCurrent.valueText.setText(this.currentMoney.toString());
         this.cardTotal.valueText.setText(this.totalMoney.toString());
-        
+
         // Trial Text Logic:
         // Update to show REMAINING balloons (Countdown)
         let countString = '';
         if (this.currentTrialIndex < 3) {
             // Tutorial: 3 total. Index 0 -> 3 left.
             countString = `${3 - this.currentTrialIndex}`;
-            this.phaseLabel.setText('(Deneme)');
+            if (this.phaseLabel) this.phaseLabel.setText('(Deneme)');
         } else {
             // Main: 60 total. Index 3 -> 60 left.
             countString = `${60 - (this.currentTrialIndex - 3)}`;
-            this.phaseLabel.setText('(Test)');
+            if (this.phaseLabel) this.phaseLabel.setText('(Test)');
         }
-        
+
         this.trialText.setText(countString);
-        
-        // Center values again
-        const centerValue = (cardObj) => {
-            const valW = cardObj.valueText.width;
-            const container = cardObj.valueContainer;
-            // Total width of icon (60) + padding (20) + text (valW)
-            const totalW = 80 + valW;
-            // We want to center this block in the parent card (which is at 0,0 locally)
-            // But valueContainer is at (0, 40).
-            // Inside valueContainer: Icon at -40. Text at 20.
-            // Visually: [Icon] [Text]
-            // We shift the whole container X so that the visual center aligns with 0.
-            // Visual center is at (-40 + (totalW/2)) relative to container origin?
-            // Let's simpler: Set container.x such that the visual midpoint is at 0.
-            // Visual Left = -70 (icon left edge approx), Visual Right = 20 + valW.
-            // Midpoint = (-70 + 20 + valW) / 2 = (valW - 50) / 2.
-            // We want container.x + Midpoint = 0  => container.x = -(valW - 50) / 2
-            
-            container.x = -(valW - 50) / 2;
-        };
-        
-        centerValue(this.cardCurrent);
-        centerValue(this.cardTotal);
+
+        // Animation for total money change (simple scale bump already in collectMoney)
+    }
+
+    resize(gameSize) {
+        const width = gameSize.width;
+        const height = gameSize.height;
+
+        this.cameras.main.setViewport(0, 0, width, height);
+
+        const cx = width / 2;
+
+        // Background: Cover Logic
+        if (this.bg) {
+            const scaleX = width / this.bg.width;
+            const scaleY = height / this.bg.height;
+            const scale = Math.max(scaleX, scaleY);
+            this.bg.setScale(scale).setPosition(cx, height / 2).setOrigin(0.5);
+        }
+
+        // Header and Footer: Stretch to width
+        let headerBottom = 0;
+        let footerTop = height;
+
+        if (this.header) {
+            this.header.setPosition(cx, 0); // Top
+            this.header.displayWidth = width; // Stretch to full width
+            headerBottom = this.header.displayHeight;
+        }
+
+        if (this.footer) {
+            this.footer.setPosition(cx, height); // Bottom
+            this.footer.displayWidth = width; // Stretch to full width
+            footerTop = height - this.footer.displayHeight;
+        }
+
+        // Layout Areas
+        const safeAreaTop = headerBottom + 20;
+        const safeAreaBottom = footerTop - 20;
+        const safeAreaHeight = safeAreaBottom - safeAreaTop;
+
+        // Layout Strategy:
+        // Balloon: Top (Remaining space)
+        // Buttons: Middle/Lower
+        // Stats: Bottom
+
+        const isSmallScreen = width < 600;
+
+        // 1. Stats (Bottom)
+        // Move stats to the bottom area
+        const statsCHeight = isSmallScreen ? 80 : 120;
+        const statsY = safeAreaBottom - (statsCHeight / 2);
+
+        // 2. Buttons (Above Stats)
+        const btnSpacingY = 30; // Gap between Stats and Buttons
+        const btnHeight = isSmallScreen ? 80 : 120;
+        const btnY = statsY - (statsCHeight / 2) - btnSpacingY - (btnHeight / 2);
+
+        // Update Stats Positions
+        if (this.statPotential && this.statPotential.container) {
+            // Responsive spacing based on width
+            const statSpacing = Math.min(width * 0.28, 350);
+
+            this.statPotential.container.setPosition(cx - statSpacing, statsY);
+            this.statTotal.container.setPosition(cx, statsY);
+            this.statCount.container.setPosition(cx + statSpacing, statsY);
+
+            // Scale down stats if very narrow
+            const statScale = width < 400 ? 0.65 : (width < 600 ? 0.8 : 1);
+
+            // Adjust hit areas or container size if needed, but scaling the container is easiest
+            [this.statPotential.container, this.statTotal.container, this.statCount.container].forEach(c => {
+                c.setScale(statScale);
+            });
+        }
+
+        // Update Buttons Positions
+        const btnSpacingX = isSmallScreen ? 160 : 350;
+
+        if (this.pumpBtn) {
+            this.pumpBtn.setPosition(cx - btnSpacingX / 2, btnY);
+            if (isSmallScreen) this.pumpBtn.setScale(0.75); // Slightly smaller on mobile
+            else this.pumpBtn.setScale(1);
+        }
+        if (this.collectBtn) {
+            this.collectBtn.setPosition(cx + btnSpacingX / 2, btnY);
+            if (isSmallScreen) this.collectBtn.setScale(0.75);
+            else this.collectBtn.setScale(1);
+        }
+
+        // 3. Balloon - Centered in remaining space above Buttons
+        // Remaining space top: safeAreaTop
+        // Remaining space bottom: Top of Button area
+        const balloonSpaceBottom = btnY - (btnHeight / 2) - 30; // 30px padding
+        const balloonAvailableH = balloonSpaceBottom - safeAreaTop;
+
+        let balloonCy = safeAreaTop + balloonAvailableH / 2;
+        // Ensure it doesn't get pushed too far up if space is tight
+        balloonCy = Math.max(balloonCy, safeAreaTop + 50);
+
+        if (this.balloonContainer) {
+            this.balloonContainer.setPosition(cx, balloonCy);
+
+            // Auto-scale balloon
+            // Max height allowed
+            const maxBalloonH = Math.max(balloonAvailableH * 0.8, 200);
+            const baseSpriteHeight = 900;
+
+            // Calculate required scale
+            const safeBaseScale = (maxBalloonH / 1.3) / baseSpriteHeight;
+
+            const finalScale = Math.min(0.4, Math.max(0.15, safeBaseScale));
+
+            this.balloonContainer.setScale(finalScale);
+        }
     }
 }

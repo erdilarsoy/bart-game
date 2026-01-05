@@ -11,94 +11,116 @@ export class StartScene extends Phaser.Scene {
         const height = this.cameras.main.height;
 
         // Background
-        const bg = this.add.image(0, 0, 'background-paper').setOrigin(0, 0);
-        bg.displayWidth = width;
-        bg.displayHeight = height;
+        this.bg = this.add.image(0, 0, 'bg').setOrigin(0, 0);
 
-        // Container for content
-        const content = this.add.container(width / 2, height / 2);
-
-        // Title
-        const title = this.add.text(0, -350, 'Nasıl Oynanır?', {
-            font: 'bold 80px Calibri',
-            color: '#5a4a3a'
-        }).setOrigin(0.5);
-
-        // Instructions Panel
-        const panelBg = this.add.graphics();
-        panelBg.fillStyle(0xffffff, 0.9);
-        panelBg.lineStyle(4, 0xd0c0a0, 1);
-        panelBg.fillRoundedRect(-500, -250, 1000, 550, 30);
-        panelBg.strokeRoundedRect(-500, -250, 1000, 550, 30);
-        
-        content.add([panelBg, title]);
-
-        const instructions = [
-            "• Her turda karşınıza bir balon gelecek.",
-            "• 'Şişir' butonuna basarak balonu şişirin ve para kazanın.",
-            "• DİKKAT: Balon her an patlayabilir!",
-            "• Balon patlarsa o turdaki tüm kazancınızı kaybedersiniz.",
-            "• Patlamadan önce 'Kasaya Gönder' diyerek paranızı kurtarın.",
-            "• Amaç: Riskleri yöneterek en çok parayı toplamak."
-        ];
-
-        let startY = -200;
-        instructions.forEach(line => {
-            const text = this.add.text(-450, startY, line, {
-                font: 'bold 36px Calibri',
-                color: '#5a4a3a',
-                wordWrap: { width: 900 }
-            }).setOrigin(0, 0);
-            content.add(text);
-            startY += 80;
-        });
+        // Tutorial Panel
+        this.panel = this.add.image(0, 0, 'tutorial-panel').setOrigin(0.5);
 
         // Start Button
-        const btnY = 380;
-        const btn = this.add.container(0, btnY);
-        
-        const btnBg = this.add.graphics();
-        btnBg.fillStyle(0x81c784, 1); // Green like Collect button
-        btnBg.lineStyle(4, 0x519657, 1);
-        btnBg.fillRoundedRect(-200, -50, 400, 100, 25);
-        btnBg.strokeRoundedRect(-200, -50, 400, 100, 25);
-        
-        const btnText = this.add.text(0, 0, 'Oyuna Başla', {
-            font: 'bold 40px Calibri',
-            color: '#ffffff',
-            shadow: { offsetX: 2, offsetY: 2, color: '#333', blur: 2, fill: true }
-        }).setOrigin(0.5);
-        
-        btn.add([btnBg, btnText]);
-        content.add(btn);
+        this.startBtn = this.add.image(0, 0, 'btn-start').setOrigin(0.5);
+        this.startBtn.setInteractive({ useHandCursor: true });
 
-        // Interaction
-        const hitZone = this.add.zone(0, 0, 400, 100);
-        btn.add(hitZone);
-        hitZone.setInteractive({ useHandCursor: true });
-        
-        hitZone.on('pointerover', () => btn.setScale(1.05));
-        hitZone.on('pointerout', () => btn.setScale(1));
-        hitZone.on('pointerdown', () => btn.setScale(0.95));
-        hitZone.on('pointerup', async () => {
-            btn.setScale(1.05);
-            
+        // Hover effects
+        this.startBtn.on('pointerover', () => this.startBtn.setScale(1.05));
+        this.startBtn.on('pointerout', () => this.startBtn.setScale(1));
+        this.startBtn.on('pointerdown', () => this.startBtn.setScale(0.95));
+
+        this.startBtn.on('pointerup', async () => {
+            this.startBtn.setScale(1.05);
+
             // Initial Audio Context Start
             if (Tone.context.state !== 'running') {
-                await Tone.start();
+                try {
+                    await Tone.start();
+                } catch (e) {
+                    console.warn('Tone.start failed, proceeding anyway:', e);
+                }
             }
-            
+
             this.scene.start('GameScene');
         });
 
-        // Add subtle animation to container
+        // Resize handler
+        this.scale.on('resize', this.resize, this);
+        this.resize({ width, height });
+
+        // Entrance Animation
+        this.panel.setAlpha(0);
+        const originalPanelY = this.panel.y; // Capture target Y
+        this.panel.y += 50;
+
+        this.startBtn.setAlpha(0);
+        const originalBtnY = this.startBtn.y; // Capture target Y
+        this.startBtn.y += 50;
+
         this.tweens.add({
-            targets: content,
-            y: height/2 + 10,
-            duration: 2000,
-            yoyo: true,
-            repeat: -1,
-            ease: 'Sine.easeInOut'
+            targets: this.panel,
+            alpha: 1,
+            y: originalPanelY,
+            duration: 800,
+            ease: 'Back.easeOut'
         });
+
+        this.tweens.add({
+            targets: this.startBtn,
+            alpha: 1,
+            y: originalBtnY,
+            delay: 300,
+            duration: 800,
+            ease: 'Back.easeOut'
+        });
+    }
+
+    resize(gameSize) {
+        const width = gameSize.width;
+        const height = gameSize.height;
+
+        this.cameras.main.setViewport(0, 0, width, height);
+
+        const cx = width / 2;
+        const cy = height / 2;
+
+        // Background: Cover Logic
+        if (this.bg) {
+            const scaleX = width / this.bg.width;
+            const scaleY = height / this.bg.height;
+            const scale = Math.max(scaleX, scaleY);
+            this.bg.setScale(scale).setPosition(cx, cy).setOrigin(0.5);
+        }
+
+        if (this.panel) {
+            this.panel.setPosition(cx, cy);
+
+            // Responsive Panel Scaling
+            // Try to fit within 90% width and 70% height
+            // But don't scale UP beyond 1.0 (pixel art/crispness check)
+            const padding = 40;
+            const availableW = Math.max(width - padding * 2, 300);
+            const availableH = Math.max(height * 0.7, 300);
+
+            const scaleW = availableW / this.panel.width;
+            const scaleH = availableH / this.panel.height;
+
+            // Use the smaller scale to fit both dimensions
+            const finalScale = Math.min(scaleW, scaleH, 1);
+
+            this.panel.setScale(finalScale);
+        }
+
+        if (this.startBtn) {
+            // Position relative to panel or bottom
+            // Ideally below panel, but if screen is short, stick to bottom
+            const panelBottom = this.panel ? (this.panel.y + (this.panel.height * this.panel.scaleY) / 2) : cy;
+            const targetY = Math.max(panelBottom + 80, height - 100);
+
+            this.startBtn.setPosition(cx, targetY);
+
+            // Also scale button if screen is very narrow
+            if (width < 400) {
+                this.startBtn.setScale(0.8);
+            } else {
+                this.startBtn.setScale(1);
+            }
+        }
     }
 }
