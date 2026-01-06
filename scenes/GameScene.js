@@ -42,6 +42,29 @@ export class GameScene extends Phaser.Scene {
     // Cleanup audio nodes on scene shutdown
     shutdown() {
         // Stop and dispose all audio nodes
+        // Stop and dispose all audio nodes
+        if (this.audioResources) {
+            Object.values(this.audioResources).forEach(resource => {
+                if (resource) {
+                    // Resource can be single node or object of nodes
+                    const dispose = (node) => {
+                        try {
+                            if (node) {
+                                if (typeof node.stop === 'function') node.stop();
+                                if (typeof node.dispose === 'function') node.dispose();
+                            }
+                        } catch (e) { }
+                    };
+
+                    if (resource.noise) dispose(resource.noise);
+                    if (resource.filter) dispose(resource.filter);
+                    if (resource.synth) dispose(resource.synth);
+                    if (resource.metal) dispose(resource.metal);
+                }
+            });
+            this.audioResources = null;
+        }
+
         if (this.audioNodes) {
             this.audioNodes.forEach(node => {
                 try {
@@ -166,12 +189,48 @@ export class GameScene extends Phaser.Scene {
         this.createStatsPanel();
         this.createActionButtons();
 
+        // Initialize Audio Objects
+        this.createAudio();
+
         // Resize handler
         this.scale.on('resize', this.resize, this);
         this.resize(this.scale.gameSize);
 
         // Start first trial
         this.startTrial();
+    }
+
+    createAudio() {
+        this.audioResources = {};
+
+        // 1. Pump Sound (Noise + Filter)
+        const pumpFilter = new Tone.Filter(1000, "lowpass").toDestination();
+        const pumpNoise = new Tone.Noise("white").connect(pumpFilter);
+        pumpNoise.volume.value = -10;
+        this.audioResources.pump = { noise: pumpNoise, filter: pumpFilter };
+
+        // 2. Collect Sound (PolySynth + MetalSynth)
+        const collectSynth = new Tone.PolySynth(Tone.Synth).toDestination();
+        collectSynth.set({
+            envelope: { attack: 0.001, decay: 0.1, sustain: 0, release: 0.1 },
+            volume: -10
+        });
+        const collectMetal = new Tone.MetalSynth({
+            frequency: 200,
+            envelope: { attack: 0.001, decay: 0.1, release: 0.01 },
+            harmonicity: 5.1,
+            modulationIndex: 32,
+            resonance: 4000,
+            octaves: 1.5
+        }).toDestination();
+        collectMetal.volume.value = -15;
+        this.audioResources.collect = { synth: collectSynth, metal: collectMetal };
+
+        // 3. Explosion Sound (Noise + Filter)
+        const popFilter = new Tone.Filter(3000, "lowpass").toDestination();
+        const popNoise = new Tone.Noise("brown").connect(popFilter);
+        popNoise.volume.value = 0;
+        this.audioResources.pop = { noise: popNoise, filter: popFilter };
     }
 
     createHose() {
@@ -556,6 +615,7 @@ export class GameScene extends Phaser.Scene {
         });
 
         // Play inflate sound
+        // Play inflate sound
         try {
             // Ensure audio context is ready - use start() not resume()
             if (Tone.context.state !== 'running') {
@@ -565,20 +625,21 @@ export class GameScene extends Phaser.Scene {
             }
 
             // Only play sound if context is running
-            if (Tone.context.state === 'running') {
-                // "Pshhh" sound for air pumping
-                const filter = this.trackAudioNode(new Tone.Filter(1000, "lowpass").toDestination(), 250);
-                const noise = this.trackAudioNode(new Tone.Noise("white").connect(filter), 250);
-
-                noise.volume.value = -10;
+            if (Tone.context.state === 'running' && this.audioResources && this.audioResources.pump) {
+                const { noise, filter } = this.audioResources.pump;
 
                 // Envelope for the "whoosh"
                 const now = Tone.now();
-                noise.start(now);
-                filter.frequency.setValueAtTime(800, now);
-                filter.frequency.rampTo(2000, 0.1); // Open up filter
 
-                // Stop after 200ms
+                // Ensure it's not already running? It might overlap, which is fine for pump.
+                // But better to restart envelope.
+                noise.start(now);
+
+                filter.frequency.cancelScheduledValues(now);
+                filter.frequency.setValueAtTime(800, now);
+                filter.frequency.rampTo(2000, 0.1);
+
+                // Stop after 100ms
                 noise.stop(now + 0.1);
             }
         } catch (e) {
@@ -625,6 +686,7 @@ export class GameScene extends Phaser.Scene {
         this.logTrial(false);
 
         // Play Cash Register Sound
+        // Play Cash Register Sound
         try {
             // Ensure audio context is ready - use start() not resume()
             if (Tone.context.state !== 'running') {
@@ -634,30 +696,13 @@ export class GameScene extends Phaser.Scene {
             }
 
             // Only play sound if context is running
-            if (Tone.context.state === 'running') {
-                // A sequence of sounds to mimic "Ka-Ching"
-                const synth = this.trackAudioNode(new Tone.PolySynth(Tone.Synth).toDestination(), 400);
-                synth.set({
-                    envelope: { attack: 0.001, decay: 0.1, sustain: 0, release: 0.1 },
-                    volume: -10
-                });
+            if (Tone.context.state === 'running' && this.audioResources && this.audioResources.collect) {
+                const { synth, metal } = this.audioResources.collect;
 
-                // "Ka" (Mechanical/Noise-like)
-                // "Ching" (High Bell)
                 const now = Tone.now();
                 synth.triggerAttackRelease(["C6", "E6"], "16n", now);
                 synth.triggerAttackRelease(["G6", "B6"], "8n", now + 0.1);
 
-                // Add a metallic hit
-                const metal = this.trackAudioNode(new Tone.MetalSynth({
-                    frequency: 200,
-                    envelope: { attack: 0.001, decay: 0.1, release: 0.01 },
-                    harmonicity: 5.1,
-                    modulationIndex: 32,
-                    resonance: 4000,
-                    octaves: 1.5
-                }).toDestination(), 400);
-                metal.volume.value = -15;
                 metal.triggerAttackRelease("32n", now + 0.1);
             }
         } catch (e) {
@@ -691,6 +736,7 @@ export class GameScene extends Phaser.Scene {
         }
 
         // Play explosion sound via Tone.js
+        // Play explosion sound via Tone.js
         try {
             // Ensure audio context is ready - use start() not resume()
             if (Tone.context.state !== 'running') {
@@ -700,14 +746,17 @@ export class GameScene extends Phaser.Scene {
             }
 
             // Only play sound if context is running
-            if (Tone.context.state === 'running') {
-                // Louder explosion
-                const filter = this.trackAudioNode(new Tone.Filter(3000, "lowpass").toDestination(), 1500);
-                const noise = this.trackAudioNode(new Tone.Noise("brown").connect(filter), 1500);
-
-                noise.volume.value = 0; // Max without clipping usually
+            if (Tone.context.state === 'running' && this.audioResources && this.audioResources.pop) {
+                const { noise, filter } = this.audioResources.pop;
 
                 const now = Tone.now();
+                // Reset parameters
+                noise.volume.cancelScheduledValues(now);
+                noise.volume.setValueAtTime(0, now);
+
+                filter.frequency.cancelScheduledValues(now);
+                filter.frequency.setValueAtTime(3000, now);
+
                 noise.start(now);
                 noise.volume.rampTo(-Infinity, 1.2); // Longer decay
                 filter.frequency.rampTo(100, 1.0);
